@@ -1,6 +1,7 @@
 
 
 #include <Python.h>
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -39,11 +40,6 @@ void db_setup(char *a_host,
   import_array();
 }
 
-struct np_point {
-  double ts;
-  double val;
-};
-
 struct request {
   pthread_mutex_t lock;
   struct sock_request *conn;
@@ -59,7 +55,9 @@ struct request {
   // request params
   const struct request_desc *r;
 
-  struct np_point **return_data;
+  uint64_t** rv_time_data;
+  double**  rv_val_data;
+  
   int *return_data_len;
   int errors;
 };
@@ -79,7 +77,7 @@ int setup_request(struct sock_request *conn,
 }
 
 int read_numpy_resultset(struct sock_request *ipp, 
-                         struct np_point **buf, int *off) {
+                         uint64_t **timebuf, double **databuf, int *off) {
   Response *r;
   struct pbuf_header h;
   void *reply;
@@ -112,23 +110,28 @@ int read_numpy_resultset(struct sock_request *ipp,
   }
 
   /* build the python data structure  */
-  if (*buf == NULL || *off == 0) {
-    len = sizeof(struct np_point) * r->data->n_data;
-    *buf = malloc(len);
+  
+  if (*timebuf == NULL || *off == 0) {
+    assert(*databuf == NULL);
+    len = sizeof(uint64_t) * r->data->n_data;
+    *timebuf = malloc(sizeof(uint64_t) * r->data->n_data);
+    *databuf = malloc(sizeof(double) * r->data->n_data);
   } else {
-    len = sizeof(struct np_point) * (r->data->n_data + *off);
-    *buf = realloc(*buf, len);
+    assert(*databuf != NULL);
+    len = sizeof(uint64_t) * (r->data->n_data + *off);
+    *timebuf = realloc(*timebuf, sizeof(uint64_t) * (r->data->n_data + *off));
+    *databuf = realloc(*databuf, sizeof(double) * (r->data->n_data + *off));
     // printf("reallocing\n");
   }
-  if (!*buf) {
+  if (!*timebuf || !*databuf) {
     fprintf(stderr, "Alloc/realloc failed: request: %i\n", len);
     response__free_unpacked(r, NULL);
     return -1;
   }
 
   for (i = *off; i < *off + r->data->n_data; i++) {
-    ((struct np_point *)(*buf))[i].ts = r->data->data[i - *off]->timestamp;
-    ((struct np_point *)(*buf))[i].val = r->data->data[i - *off]->value;
+    (*timebuf)[i] = r->data->data[i - *off]->timestamp;
+    (*databuf)[i] = r->data->data[i - *off]->value;
   }
   *off += r->data->n_data;
   rv = r->data->n_data;
@@ -180,7 +183,8 @@ void *worker_thread(void *ptr) {
         req->errors = -rv;
         goto done;
       }
-      rv = read_numpy_resultset(conn, &req->return_data[idx], &req->return_data_len[idx]);
+      rv = read_numpy_resultset(conn, &req->rv_time_data[idx],
+                &req->rv_val_data[idx], &req->return_data_len[idx]);
       if (rv < 0) {
         fprintf(stderr, "Error reading results: %s\n", strerror(-rv));
         req->errors = -rv;
@@ -189,7 +193,7 @@ void *worker_thread(void *ptr) {
         break;
       }
       limit -= rv;
-      starttime = req->return_data[idx][req->return_data_len[idx]-1].ts + 1;
+      starttime = req->rv_time_data[idx][req->return_data_len[idx]-1] + 1;
     }
   }
  done:
@@ -200,38 +204,73 @@ void *worker_thread(void *ptr) {
 }
 
 PyObject *make_numpy_list(struct request *req) {
-  PyObject *a;
+  PyObject *ta;
+  PyObject *da;
   PyObject *r = PyList_New(req->n_streams);
   int i;
   if (!r) {
     return PyErr_NoMemory();
   }
   for (i = 0; i < req->n_streams; i++) {
-    npy_intp dims[2];
+    PyObject *tup;
+    tup = PyTuple_New(2);
+    if (!tup)
+    {
+        Py_DECREF(r);
+        free(req->rv_time_data[i]);
+        free(req->rv_val_data[i]);
+        return PyErr_NoMemory();
+    }
+    npy_intp dim;
     int length = min(req->r->limit, req->return_data_len[i]);
 
-    if (req->return_data && length > 0) {
-      dims[0] = length; dims[1] = 2;
+    if (req->rv_time_data && req->rv_val_data && length > 0) {
+      dim = length;
+      // SDH:
       // memcpy into a new array because there's apparently no way to
       // pass off the buffer that will be safe...
-      a = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
-      if (!a) {
+      // MPA: 
+      // Why can we not pass off the pointer onto the ndarray with ..FromData
+      // and then setting the OWNDATA flag?   
+      ta = PyArray_SimpleNew(1, &dim, NPY_UINT64);
+      if (!ta) goto badalloc;
+      da = PyArray_SimpleNew(1, &dim, NPY_DOUBLE);
+      if (!da) {
+        Py_DECREF(ta);
+        goto badalloc;
+      }
+      PyTuple_SetItem(tup, 0, ta);
+      PyTuple_SetItem(tup, 1, da);
+      badalloc:
+      if (!ta || !da) {
         Py_DECREF(r);
-        free(req->return_data[i]);
+        free(req->rv_time_data[i]);
+        free(req->rv_val_data[i]);
         return PyErr_NoMemory();
       } else {
-        memcpy(PyArray_DATA(a), req->return_data[i], 
-               (length * sizeof(struct np_point)));
-        free(req->return_data[i]);
-
+        memcpy(PyArray_DATA((PyArrayObject*)ta), req->rv_time_data[i], 
+               (length * sizeof(uint64_t)));
+        memcpy(PyArray_DATA((PyArrayObject*)da), req->rv_val_data[i], 
+               (length * sizeof(uint64_t)));
+        free(req->rv_time_data[i]);
+        free(req->rv_val_data[i]);
+    
         // donate the ref we got
-        PyList_SetItem(r, i, a);
+        PyList_SetItem(r, i, tup);
       }
     } else {
-      npy_intp dims[2] = {0, 2};
-      // otherwise return an empty array with the proper dimension.
-      // n.b. PyArray_SimpleNew segfaults if any dimensions are zero...
-      PyList_SetItem(r, i, PyArray_EMPTY(2, dims, NPY_DOUBLE, 0));
+        dim=0;
+        ta = PyArray_EMPTY(1, &dim, NPY_UINT64,0);
+        if (ta)
+        {
+            da = PyArray_EMPTY(1, &dim, NPY_DOUBLE,0);
+            if (!da) {
+                Py_DECREF(ta);
+            }
+            PyTuple_SetItem(tup, 0, ta);
+            PyTuple_SetItem(tup, 1, da);
+            PyList_SetItem(r, i, tup);
+        }
     }
   }
   return r;
@@ -264,16 +303,26 @@ PyObject *db_multiple(struct sock_request *ipp, const struct request_desc *r) {
   pthread_mutex_init(&req.lock, NULL);
   req.next_streamid = 0;
   req.n_streams = n_streams;
-  req.return_data = malloc(sizeof(PyObject *) * n_streams);
-  if (!req.return_data) return NULL;
+  //Whoah... req.return_data was not declared as a PyObject * at all :/
+  //But, I trust steve. Even if he plays fast and loose with void pointers.
+  //req.return_data = malloc(sizeof(PyObject *) * n_streams);
+  req.rv_time_data = malloc(sizeof(PyObject *) * n_streams);
+  if (!req.rv_time_data) return NULL;
+  req.rv_val_data = malloc(sizeof(PyObject *) * n_streams);
+  if (!req.rv_val_data) return NULL;
   req.return_data_len = malloc(sizeof(int) * n_streams);
-  if (!req.return_data) {
+  //This used to be a NOOP, as we had a return null above...
+  //TODO, the nomem is probably more correcter.
+ /* if (!req.return_data) {
     free(req.return_data);
     PyEval_RestoreThread(_save);
     return PyErr_NoMemory();
-  }
+  }*/
   memset(req.return_data_len, 0, sizeof(int) * n_streams);
-  for (i = 0; i < n_streams; i++) req.return_data[i] = NULL;
+  for (i = 0; i < n_streams; i++){
+   req.rv_time_data[i] = NULL;
+   req.rv_val_data[i] = NULL;
+  }
 
   if (n_streams == 1 || ipp) {
     // printf("not starting threads because connection is provided: %p\n", ipp);
@@ -294,15 +343,19 @@ PyObject *db_multiple(struct sock_request *ipp, const struct request_desc *r) {
   // printf("req errors %i\n", req.errors);
   if (!req.errors) {
     rv = make_numpy_list(&req);
-    free(req.return_data);
+    free(req.rv_time_data);
+    free(req.rv_val_data);
     free(req.return_data_len);
     return rv;
   } else {
     for (i = 0; i < n_streams; i++) {
-      if (req.return_data[i])
-        free(req.return_data[i]);
+      if (req.rv_time_data[i])
+        free(req.rv_time_data[i]);
+      if (req.rv_val_data[i])
+        free(req.rv_val_data[i]);
     }
-    free(req.return_data);
+    free(req.rv_time_data);
+    free(req.rv_val_data);
     free(req.return_data_len);
     PyErr_Format(PyExc_Exception, "error reading data: last error: %s", 
                  strerror(req.errors));
