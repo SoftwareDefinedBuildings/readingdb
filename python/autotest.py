@@ -67,6 +67,32 @@ class TestIface(unittest.TestCase):
             self.assertEqual(d[0][i], i)
             self.assertEqual(d[1][i], i)
 
+    def test_full64_range(self):
+        rdb.db_setup('localhost', port)
+        locations = [16,32,48,62]
+        width = 50
+        data = []
+        stream = 42
+        for loc in locations:
+            chunk = [(i,float(i+6)) for i in xrange(2**loc-width, 2**loc+width)]
+            data += chunk
+            self.assertEqual(rdb.db_add(self.conn, stream, chunk), 1)
+        
+        retdata = rdb.db_query([stream],0,2**locations[-1]+width+1, conn=self.conn)[0]
+        #retdata = rdb.db_query([stream],0,500, conn=self.conn)
+        self.assertEqual(len(retdata[0]),2*width*len(locations))
+        self.assertEqual(len(retdata[1]),2*width*len(locations))
+        for idx in xrange(len(retdata)):
+            #A bit confusing, but the returned value is a 2-tuple of lists
+            #and the data is a list of 2-tuples.
+            rcv_t = retdata[0][idx]
+            exp_t = data[idx][0]
+            rcv_v = retdata[1][idx]
+            exp_v = data[idx][1]
+            self.assertEqual(rcv_t, exp_t)
+            #Pff, who cares about the actual VALUES right?
+            self.assertAlmostEqual(rcv_v, exp_v)
+            
     def test_multi(self):
         streams = range(1, int(1e4), int(1e3))
         for i in streams:
