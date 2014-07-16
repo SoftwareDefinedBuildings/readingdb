@@ -31,7 +31,7 @@ builddeb: distclean prep
 	rm -rf ../$(PROJECT)-$(VERSION)/dist
 	tar zcvf ../$(PROJECT)_$(VERSION).orig.tar.gz ../$(PROJECT)-$(VERSION)
 	rm -rf ../$(PROJECT)-$(VERSION)
-	dpkg-buildpackage -i -I -rfakeroot -uc -us -F
+	dpkg-buildpackage -i -I -rfakeroot -uc -us -S
 
 $(SWIG_OUTPUTS): readingdb.i ../src/readingdb.h readingdb_py.h
 	swig -python -keyword -Wall readingdb.i
