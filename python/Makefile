@@ -15,7 +15,7 @@ install: module
 
 prep: readingdb.i $(SWIG_OUTPUTS) ../src/pbuf/rdb.pb-c.c
 	mkdir -p src/pbuf
-	cp -r ../src/pbuf/* src/pbuf
+	cp -r ../src/pbuf/* src/pbuf/
 	cp ../src/readingdb.h ../src/rpc.c ../src/rpc.h ../src/commands.h src
 
 module: prep
@@ -31,7 +31,7 @@ builddeb: distclean prep
 	rm -rf ../$(PROJECT)-$(VERSION)/dist
 	tar zcvf ../$(PROJECT)_$(VERSION).orig.tar.gz ../$(PROJECT)-$(VERSION)
 	rm -rf ../$(PROJECT)-$(VERSION)
-	dpkg-buildpackage -i -I -rfakeroot -uc -us -S
+	dpkg-buildpackage -i -I -rfakeroot -uc -us -F
 
 $(SWIG_OUTPUTS): readingdb.i ../src/readingdb.h readingdb_py.h
 	swig -python -keyword -Wall readingdb.i
