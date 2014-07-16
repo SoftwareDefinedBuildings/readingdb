@@ -6,7 +6,7 @@ EXTRA_DIST=setup.py readingdb.i readingdb_py.h readingdb.c
 SWIG_OUTPUTS = readingdb_wrap.c readingdb.py
 
 PROJECT=readingdb-python
-VERSION=0.6.0-3
+VERSION=0.6.1
 
 all-local: module
 
