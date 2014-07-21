@@ -13,7 +13,7 @@ Architecture: any
 Section: database
 Priority: optional
 Depends: zlib1g, libdb5.3, libprotobuf-c0
-Suggests: monit, readingdb-python
+Suggests: monit, supervisor, readingdb-python
 Homepage: https://github.com/stevedh/readingdb
 Description: readingdb is a time-series database designed for 
  efficiency and speed.

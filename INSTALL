@@ -16,6 +16,11 @@ The install process also installs a monit script in /etc/monit/conf.d
 which can be used to start and stop the server if you have monit
 installed; a `monit start readingdb` will work.
 
+The install process also installs a supervisor script into /etc/supervisor/conf.d
+which can also be used to start/stop the server. It should have near-identical
+configuration to the monit script, and can be started with `supervisorctl start readingdb`,
+though a `supervisor reload` may be required beforehand.
+
 reading-server will attempt to drop to a "readingdb" user when
 started; this is convenient since monit often runs as root.  If you
 want this to happen, you'll need to create this user (for instance, by
