@@ -8,6 +8,8 @@ case "$1" in
         adduser --system readingdb 2>/dev/null
 
         chown readingdb /var/lib/readingdb
+
+        supervisorctl reload
         ;;
 esac
 
