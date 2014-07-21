@@ -17,7 +17,7 @@ which can also be used to start/stop the server. It should be running after inst
 but you can also use `supervisorctl stop/start readingdb`.
 
 reading-server will attempt to drop to a "readingdb" user when
-started; this is convenient since monit often runs as root.  If you
+started; this is convenient since supervisor often runs as root.  If you
 want this to happen, you'll need to create this user (for instance, by
 doing `adduser --system readingdb`) if you are not using the binary
 package.  You'll have to make sure that the data directory is readable
