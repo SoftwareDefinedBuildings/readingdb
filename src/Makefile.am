@@ -17,5 +17,5 @@ noinst_HEADERS = config.h  logging.h  readingdb.h  readingdb_py.h  \
 
 install-data-local:
 	mkdir -p $(DESTDIR)/$(localstatedir)/lib/readingdb
-	mkdir -p $(DESTDIR)/$(sysconfdir)/monit/conf.d
-	sh mkmonit.sh $(localstatedir) $(bindir) > $(DESTDIR)/$(sysconfdir)/monit/conf.d/readingdb
+	mkdir -p $(DESTDIR)/$(sysconfdir)/supervisor/conf.d
+	sh mksupervisor.sh $(localstatedir) $(bindir) > $(DESTDIR)/$(sysconfdir)/supervisor/conf.d/readingdb.conf
