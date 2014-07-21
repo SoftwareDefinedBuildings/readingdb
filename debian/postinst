@@ -9,7 +9,7 @@ case "$1" in
 
         chown readingdb /var/lib/readingdb
 
-        supervisorctl reload
+        supervisorctl update
         ;;
 esac
 
