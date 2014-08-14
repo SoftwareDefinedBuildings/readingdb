@@ -296,7 +296,7 @@ PyObject *db_prev(unsigned long long *streamids,
                   unsigned long long reference, int n,
                   struct sock_request *ipp) {
   struct request_desc d;
-  PyObject *numpy, *flipud, *p, *rv;
+  PyObject *numpy, *fliplr, *p, *rv;
   int i;
   d.streamids = streamids;
   d.type = REQ_ITER;
@@ -310,7 +310,7 @@ PyObject *db_prev(unsigned long long *streamids,
     return NULL;
   }
 
-  // use the numpy flipud to return a view on the data which has it in
+  // use the numpy fliplr to return a view on the data which has it in
   // the right order (ascending timestamps).
   numpy = PyImport_ImportModule("numpy");
   if (!numpy) {
@@ -318,8 +318,8 @@ PyObject *db_prev(unsigned long long *streamids,
     PyErr_Clear();
     return rv;
   }
-  flipud = PyObject_GetAttrString(numpy, "flipud");
-  if (!flipud) {
+  fliplr = PyObject_GetAttrString(numpy, "fliplr");
+  if (!fliplr) {
     PyErr_Clear();
     Py_DECREF(numpy);
     return rv;
@@ -329,15 +329,15 @@ PyObject *db_prev(unsigned long long *streamids,
   if (!PyList_Check(rv)) goto done;
   for (i = 0; i < PyList_Size(rv); i++) {
     p = PyList_GetItem(rv, i);
-    PyList_SetItem(rv, i, PyObject_CallFunctionObjArgs(flipud, p, NULL));
-    // the way I think this works is we call flipud, which creates a
+    PyList_SetItem(rv, i, PyObject_CallFunctionObjArgs(fliplr, p, NULL));
+    // the way I think this works is we call fliplr, which creates a
     // "view" into the original array as a new object.  Since the
     // reference to the original array disappears, we don't need to
     // incref/decref it; we essentially donate our ref to the view.
   }
  done:
   Py_DECREF(numpy);
-  Py_DECREF(flipud);
+  Py_DECREF(fliplr);
   return rv;
 }
 
